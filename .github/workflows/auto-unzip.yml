@@ -1,11 +1,7 @@
-name: Auto Extract ZIP
+name: Manual Extract ZIP
 
 on:
-  push:
-    branches:
-      - main
-    paths:
-      - 'zip/*.zip' # ทำงานเมื่อมีการอัปโหลดหรือแก้ไขไฟล์ .zip ในโฟลเดอร์ชื่อ zip เท่านั้น
+  workflow_dispatch: # ใช้คำสั่งนี้เพื่อให้มีปุ่ม "Run workflow" ให้กดด้วยตัวเอง
 
 jobs:
   unzip-and-commit:
@@ -19,17 +15,19 @@ jobs:
 
       - name: Extract ZIP files to root
         run: |
-          # วนลูปหาไฟล์ .zip ทั้งหมดในโฟลเดอร์ zip/
-          for f in zip/*.zip; do
-            if [ -f "$f" ]; then
+          # ตรวจสอบว่ามีไฟล์ .zip อยู่ในโฟลเดอร์ zip/ หรือไม่
+          if ls zip/*.zip 1> /dev/null 2>&1; then
+            for f in zip/*.zip; do
               echo "Unzipping $f to root directory..."
               # -o คือเขียนทับไฟล์เดิม, -d . คือให้แตกลงที่ root directory
               unzip -o "$f" -d .
               
               # หากต้องการให้ระบบลบไฟล์ zip ต้นฉบับทิ้งหลังจากแตกไฟล์เสร็จ ให้เอาเครื่องหมาย # ด้านล่างออก
               # git rm "$f"
-            fi
-          done
+            done
+          else
+            echo "No ZIP files found in zip/ directory. Nothing to extract."
+          fi
 
       - name: Commit and push extracted files
         run: |
@@ -40,10 +38,9 @@ jobs:
           # Add ไฟล์ทั้งหมดที่ถูกแตกออกมา
           git add .
           
-          # ตรวจสอบว่ามีไฟล์ใหม่เกิดขึ้นจริงหรือไม่ (เพื่อป้องกัน error กรณีไม่มีอะไรเปลี่ยนแปลง)
+          # ตรวจสอบว่ามีไฟล์ใหม่เกิดขึ้นจริงหรือไม่
           if ! git diff-index --quiet HEAD; then
-            # ใช้ [skip ci] เพื่อป้องกันไม่ให้ Actions อื่นทำงานซ้ำซ้อนจาก commit นี้
-            git commit -m "Auto-extracted zip files to root [skip ci]"
+            git commit -m "Manually extracted zip files to root"
             git push
           else
             echo "No changes to commit"
