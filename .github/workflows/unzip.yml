@@ -1,2 +1,0 @@
-- name: Extract zip to root
-  run: unzip -oq apk-builder-pro2.zip -d .
