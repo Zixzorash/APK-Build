@@ -5,63 +5,71 @@ on:
     paths: ["*.zip"]
 jobs:
   apk:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v4
       
       - name: Extract project zip
         run: |
           shopt -s nullglob
           for z in *.zip; do echo "Extracting $z"; unzip -oq "$z" -d _src; done
           
-      - uses: actions/setup-java@v5
+      - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: 21
           
       - uses: gradle/actions/setup-gradle@v4
         with:
-          gradle-version: 8.10.2 # ใช้เวอร์ชันที่รองรับกับ AGP 8.8.0
+          gradle-version: 8.10.2
           
       - name: Locate project
         run: |
           F=$(find . -name "settings.gradle*" -not -path "./.git/*" | head -n 1)
-          if [ -z "$F" ]; then echo "::error::settings.gradle not found. Upload the project zip to the repo root."; ls -la; exit 1; fi
-          echo "P=$(dirname "$F")" >> "$GITHUB_ENV"; echo "Project dir: $(dirname "$F")"
+          if [ -z "$F" ]; then echo "::error::settings.gradle not found."; exit 1; fi
+          echo "P=$(dirname "$F")" >> "$GITHUB_ENV"
           
-      - name: Accept SDK licenses
+      - name: Install Android SDK 35
         run: |
           yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-35" "build-tools;35.0.0" > /dev/null
           
-      - name: Prepare
+      - name: Prepare Resources & Build Environment
         run: |
           cd "$P"
+          
+          # สร้าง Debug Keystore สำหรับเซ็นชื่อแอพ
           [ -f debug.keystore ] || keytool -genkeypair -keystore debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
           
-          # เปลี่ยน Application ID และ Version
-          sed -i -E 's/versionCode = [0-9]+/versionCode = 1/; s/versionName = ".*"/versionName = "1.0"/; s/applicationId = ".*"/applicationId = "com.aistudio.runtermux.idlc"/' app/build.gradle.kts
+          # สร้างโครงสร้างโฟลเดอร์ res/ จำลองเพื่อป้องกัน AAPT2 Error
+          RES="app/src/main/res"
+          mkdir -p "$RES/values" "$RES/xml" "$RES/drawable"
           
-          # แพตช์ AndroidManifest.xml เพื่อลบการอ้างอิง Resource ที่ขาดหายไป
-          sed -i 's/android:dataExtractionRules="@xml\/data_extraction_rules"//g' app/src/main/AndroidManifest.xml
-          sed -i 's/android:fullBackupContent="@xml\/backup_rules"//g' app/src/main/AndroidManifest.xml
-          sed -i 's/android:icon="@mipmap\/ic_launcher"/android:icon="@android:drawable\/sym_def_app_icon"/g' app/src/main/AndroidManifest.xml
-          sed -i 's/android:roundIcon="@mipmap\/ic_launcher_round"//g' app/src/main/AndroidManifest.xml
-          sed -i 's/android:label="@string\/app_name"/android:label="My App"/g' app/src/main/AndroidManifest.xml
-          sed -i 's/android:theme="@style\/Theme.APKBuilderPro"/android:theme="@android:style\/Theme.DeviceDefault.NoActionBar"/g' app/src/main/AndroidManifest.xml
+          cat <<EOF > "$RES/values/strings.xml"
+          <resources><string name="app_name">APK Builder Pro</string></resources>
+          EOF
           
-          if [ -n "$GEMINI_API_KEY" ]; then echo "GEMINI_API_KEY=$GEMINI_API_KEY" > .env; fi
-        env:
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          cat <<EOF > "$RES/values/themes.xml"
+          <resources><style name="Theme.APKBuilderPro" parent="android:Theme.DeviceDefault.NoActionBar" /></resources>
+          EOF
+          
+          cat <<EOF > "$RES/xml/backup_rules.xml"
+          <full-backup-content/>
+          EOF
+          
+          cat <<EOF > "$RES/xml/data_extraction_rules.xml"
+          <data-extraction-rules><cloud-backup><include domain="sharedpref" path="."/></cloud-backup></data-extraction-rules>
+          EOF
+          
+          # ปรับ AndroidManifest.xml ให้ชี้ไปที่ไอคอนพื้นฐานของระบบ
+          sed -i 's/android:icon="@mipmap\/ic_launcher"/android:icon="@android:drawable\/sym_def_app_icon"/g' app/src/main/AndroidManifest.xml || true
+          sed -i 's/android:roundIcon="@mipmap\/ic_launcher_round"//g' app/src/main/AndroidManifest.xml || true
           
       - name: Build debug APK
         run: |
           cd "$P"
-          if [ -f gradlew ] && [ -f gradle/wrapper/gradle-wrapper.jar ]; then 
-            chmod +x gradlew
-            ./gradlew assembleDebug --no-daemon --stacktrace
-          else 
-            gradle assembleDebug --no-daemon --stacktrace
-          fi
+          # สั่งคอมไพล์ผ่านคำสั่ง gradle โดยตรงเนื่องจากไม่มี gradlew ในโปรเจกต์ต้นฉบับ
+          gradle assembleDebug --no-daemon --stacktrace
           
       - uses: actions/upload-artifact@v4
         with:
