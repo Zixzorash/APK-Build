@@ -1,6 +1,0 @@
-{
-  "name": "APK Builder Pro",
-  "description": "แปลงไฟล์ ZIP จาก Google AI Studio และ Native Android App เป็น APK และ XAPK พร้อมลงชื่ออัตโนมัติ ติดตั้งและส่งขึ้น Play Store ได้ทันที",
-  "requestFramePermissions": [],
-  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
-}
