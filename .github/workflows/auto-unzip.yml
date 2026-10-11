@@ -1,0 +1,50 @@
+name: Auto Extract ZIP
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'zip/*.zip' # ทำงานเมื่อมีการอัปโหลดหรือแก้ไขไฟล์ .zip ในโฟลเดอร์ชื่อ zip เท่านั้น
+
+jobs:
+  unzip-and-commit:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # ให้สิทธิ์ในการ commit ไฟล์กลับ
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Extract ZIP files to root
+        run: |
+          # วนลูปหาไฟล์ .zip ทั้งหมดในโฟลเดอร์ zip/
+          for f in zip/*.zip; do
+            if [ -f "$f" ]; then
+              echo "Unzipping $f to root directory..."
+              # -o คือเขียนทับไฟล์เดิม, -d . คือให้แตกลงที่ root directory
+              unzip -o "$f" -d .
+              
+              # หากต้องการให้ระบบลบไฟล์ zip ต้นฉบับทิ้งหลังจากแตกไฟล์เสร็จ ให้เอาเครื่องหมาย # ด้านล่างออก
+              # git rm "$f"
+            fi
+          done
+
+      - name: Commit and push extracted files
+        run: |
+          # ตั้งค่าชื่อ Bot สำหรับทำการ Commit
+          git config --global user.name 'github-actions[bot]'
+          git config --global user.email 'github-actions[bot]@users.noreply.github.com'
+          
+          # Add ไฟล์ทั้งหมดที่ถูกแตกออกมา
+          git add .
+          
+          # ตรวจสอบว่ามีไฟล์ใหม่เกิดขึ้นจริงหรือไม่ (เพื่อป้องกัน error กรณีไม่มีอะไรเปลี่ยนแปลง)
+          if ! git diff-index --quiet HEAD; then
+            # ใช้ [skip ci] เพื่อป้องกันไม่ให้ Actions อื่นทำงานซ้ำซ้อนจาก commit นี้
+            git commit -m "Auto-extracted zip files to root [skip ci]"
+            git push
+          else
+            echo "No changes to commit"
+          fi
